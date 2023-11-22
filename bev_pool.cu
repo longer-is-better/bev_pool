@@ -136,14 +136,14 @@ __global__ void bev_pool_kernel(
 
     if (SkipOut == false) {
 #pragma unroll
-    for (int tc = 0; tc < TC; tc++) {
-      int c_idx = tc_idx * TC + tc;
-      if (c_idx >= c) continue;
-      if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
-        out[ranks_bev[interval_start] * c + c_idx] = __float2half(psum[tc]);
-      else
-        out[ranks_bev[interval_start] * c + c_idx] = psum[tc];
-    }
+      for (int tc = 0; tc < TC; tc++) {
+        int c_idx = tc_idx * TC + tc;
+        if (c_idx >= c) continue;
+        if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
+          out[ranks_bev[interval_start] * c + c_idx] = __float2half(psum[tc]);
+        else
+          out[ranks_bev[interval_start] * c + c_idx] = psum[tc];
+      }
     } else {
 #pragma unroll
       for (int tc = 0; tc < TC; tc++) {
@@ -216,9 +216,15 @@ void bev_pool_float_float_2_2(int c, int n_intervals,
   constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
-  bev_pool_kernel<float, float, TC, TN><<<gridSize, blockSize>>>(
+  bev_pool_kernel<float, float, TC, TN, true><<<gridSize, blockSize>>>(
       c, n_intervals, depth, feat, ranks_depth, ranks_feat, ranks_bev,
       interval_starts, interval_lengths, out);
+
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess)
+  {
+      printf("Error in bev_pool_float_float_2_2: %s\n" ,cudaGetErrorString(err));
+  }
 }
 
 extern "C"
@@ -247,7 +253,7 @@ void bev_pool_half_float_2_2(int c, int n_intervals,
   constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
-  bev_pool_kernel<__half, float, TC, TN, true><<<gridSize, blockSize>>>(
+  bev_pool_kernel<__half, float, TC, TN><<<gridSize, blockSize>>>(
       c, n_intervals, depth, feat, ranks_depth, ranks_feat, ranks_bev,
       interval_starts, interval_lengths, out);
 }
