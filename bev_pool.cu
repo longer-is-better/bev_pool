@@ -118,8 +118,8 @@ __global__ void bev_pool_kernel(
     int n_idx = tn_idx * TN + tn;
     if (n_idx >= n_intervals) return;
 
-    int interval_start = interval_starts[n_idx];
-    int interval_length = interval_lengths[n_idx];
+    int interval_start = __ldg(&interval_starts[n_idx]);
+    int interval_length = __ldg(&interval_lengths[n_idx]);
 
     if (interval_start == -1) return;
 
@@ -128,13 +128,13 @@ __global__ void bev_pool_kernel(
     }
 
     for (int i = 0; i < interval_length; i++) {
-      TensorType d = depth[ranks_depth[interval_start + i]];
+      TensorType d = __ldg(&depth[ranks_depth[interval_start + i]]);
 #pragma unroll
       for (int tc = 0; tc < TC; tc++) { 
         int c_idx = tc_idx * TC + tc;
         if (c_idx >= c) continue;
 
-        TensorType f = feat[ranks_feat[interval_start + i] * c + c_idx];
+        TensorType f = __ldg(&feat[ranks_feat[interval_start + i] * c + c_idx]);
         if (std::is_same<TensorType, __half>::value && std::is_same<AccType, __half>::value)
           psum[tc] = __hfma(d, f, psum[tc]);
         else if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
@@ -144,15 +144,6 @@ __global__ void bev_pool_kernel(
       }
     }
 
-//#pragma unroll
-    //for (int tc = 0; tc < TC; tc++) {
-    //  int c_idx = tc_idx * TC + tc;
-    //  if (c_idx >= c) continue;
-    //  if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
-    //    out[ranks_bev[interval_start] * c + c_idx] = __float2half(psum[tc]);
-    //  else
-    //    out[ranks_bev[interval_start] * c + c_idx] = psum[tc];
-    //}
 #pragma unroll
     for (int tc = 0; tc < TC; tc++) {
       int c_idx = tc_idx * TC + tc;
@@ -185,10 +176,10 @@ void bev_pool_float_float(int c, int n_intervals,
                           const int *interval_starts,
                           const int *interval_lengths,
                           float *out) {
-  constexpr int TC = 1;
+  constexpr int TC = 2;
   constexpr int TN = 1;
-  constexpr int BC = 256;
-  constexpr int BN = 4;
+  constexpr int BC = 64;
+  constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
   bev_pool_kernel<float, float, TC, TN><<<gridSize, blockSize>>>(
@@ -215,10 +206,10 @@ void bev_pool_half_float(int c, int n_intervals,
                          const int *interval_starts,
                          const int *interval_lengths,
                          __half *out) {
-  constexpr int TC = 1;
+  constexpr int TC = 2;
   constexpr int TN = 1;
-  constexpr int BC = 256;
-  constexpr int BN = 4;
+  constexpr int BC = 64;
+  constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
   bev_pool_kernel<__half, float, TC, TN><<<gridSize, blockSize>>>(
@@ -244,9 +235,9 @@ void bev_pool_half_half(int c, int n_intervals,
                         const int *interval_starts,
                         const int *interval_lengths,
                         __half *out) {
-  constexpr int TC = 1;
+  constexpr int TC = 2;
   constexpr int TN = 1;
-  constexpr int BC = 256;
+  constexpr int BC = 64;
   constexpr int BN = 4;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
