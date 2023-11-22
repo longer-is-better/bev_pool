@@ -238,7 +238,7 @@ void bev_pool_half_half(int c, int n_intervals,
   constexpr int TC = 2;
   constexpr int TN = 1;
   constexpr int BC = 64;
-  constexpr int BN = 4;
+  constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
   bev_pool_kernel<__half, __half, TC, TN><<<gridSize, blockSize>>>(
