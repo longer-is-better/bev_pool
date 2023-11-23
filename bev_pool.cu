@@ -54,6 +54,26 @@ void tensor_init(int *ranks_depth,
 
 }
 
+
+extern "C" void tensor_NDHW_to_NHWD(int *ranks_depth, size_t num, int N, int D, int H, int W);
+void tensor_NDHW_to_NHWD(int *ranks_depth, size_t num, int N, int D, int H, int W) {
+#pragma omp parallel for
+  for (int i = 0; i < num; i++) {
+    int idx = ranks_depth[i];
+      if (idx != -1) {
+
+        int n = idx / (D*H*W);
+        int d = (idx - n*D*H*W)/(H*W);
+        int h = (idx - n*D*H*W - d*H*W)/W;
+        int w = (idx - n*D*H*W - d*H*W - h*W);
+
+        int new_idx = n*H*W*D + h*W*D + w*D + d;
+        ranks_depth[i] = new_idx;
+      }
+  }
+}
+
+
 extern "C" void bev_pool_baseline(int c, int n_intervals, const float *depth, const float *feat,
                                   const int *ranks_depth, const int *ranks_feat,
                                   const int *ranks_bev, const int *interval_starts,
@@ -98,9 +118,9 @@ void bev_pool_baseline(int c, int n_intervals, const float *depth, const float *
       interval_starts, interval_lengths, out);
 }
 
-template<typename TensorType, typename AccType, const int TC, const int TN>
+template<typename TensorType, typename AccType, const int TC, const int TN, const int IHW=1, const int OHW=1, bool FEAT_CL=true>
 __global__ void bev_pool_kernel(
-    int c, int n_intervals,
+    int C, int n_intervals,
     const TensorType *__restrict__ depth,
     const TensorType *__restrict__ feat,
     const int *__restrict__ ranks_depth,
@@ -130,11 +150,20 @@ __global__ void bev_pool_kernel(
     for (int i = 0; i < interval_length; i++) {
       TensorType d = __ldg(&depth[ranks_depth[interval_start + i]]);
 #pragma unroll
-      for (int tc = 0; tc < TC; tc++) { 
+      for (int tc = 0; tc < TC; tc++) {
         int c_idx = tc_idx * TC + tc;
-        if (c_idx >= c) continue;
+        if (c_idx >= C) continue;
 
-        TensorType f = __ldg(&feat[ranks_feat[interval_start + i] * c + c_idx]);
+        TensorType f;
+        if (FEAT_CL)
+          f = __ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
+        else {// NCHW
+          int idx = ranks_feat[interval_start + i];
+          int n = idx / IHW;
+          int hw = idx % IHW;
+          f = __ldg(&feat[n*C*IHW + c_idx*IHW + hw]);
+        }
+
         if (std::is_same<TensorType, __half>::value && std::is_same<AccType, __half>::value)
           psum[tc] = __hfma(d, f, psum[tc]);
         else if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
@@ -147,8 +176,15 @@ __global__ void bev_pool_kernel(
 #pragma unroll
     for (int tc = 0; tc < TC; tc++) {
       int c_idx = tc_idx * TC + tc;
-      if (c_idx >= c) continue;
-      int tid = n_idx * c + c_idx;
+      if (c_idx >= C) continue;
+      int tid;
+      if (FEAT_CL)
+        tid = n_idx * C + c_idx;
+      else {
+        int n = n_idx / OHW;
+        int hw = n_idx % OHW;
+        tid = n*C*OHW + c_idx*OHW + hw;
+      }
       if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
         out[tid] = __float2half(psum[tc]);
       else
@@ -187,6 +223,33 @@ void bev_pool_float_float(int c, int n_intervals,
       interval_starts, interval_lengths, out);
 }
 
+extern "C"
+void bev_pool_float_float_nchw(int c, int n_intervals, const float *depth,
+                          const float *feat,
+                          const int *ranks_depth,
+                          const int *ranks_feat,
+                          const int *interval_starts,
+                          const int *interval_lengths,
+                          float *out);
+
+void bev_pool_float_float_nchw(int c, int n_intervals,
+                          const float *depth,
+                          const float *feat,
+                          const int *ranks_depth,
+                          const int *ranks_feat,
+                          const int *interval_starts,
+                          const int *interval_lengths,
+                          float *out) {
+  constexpr int TC = 2;
+  constexpr int TN = 1;
+  constexpr int BC = 64;
+  constexpr int BN = 8;
+  dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+  dim3 blockSize(BC, BN);
+  bev_pool_kernel<float, float, TC, TN, 64*120, 192*256, false><<<gridSize, blockSize>>>(
+      c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+      interval_starts, interval_lengths, out);
+}
 
 extern "C"
 void bev_pool_half_float(int c, int n_intervals,
@@ -218,6 +281,36 @@ void bev_pool_half_float(int c, int n_intervals,
 }
 
 extern "C"
+void bev_pool_half_float_nchw(int c, int n_intervals,
+                              const __half *depth,
+                              const __half *feat,
+                              const int *ranks_depth,
+                              const int *ranks_feat,
+                              const int *interval_starts,
+                              const int *interval_lengths,
+                              __half *out);
+
+void bev_pool_half_float_nchw(int c, int n_intervals,
+                              const __half *depth,
+                              const __half *feat,
+                              const int *ranks_depth,
+                              const int *ranks_feat,
+                              const int *interval_starts,
+                              const int *interval_lengths,
+                              __half *out) {
+  constexpr int TC = 2;
+  constexpr int TN = 1;
+  constexpr int BC = 64;
+  constexpr int BN = 8;
+  dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+  dim3 blockSize(BC, BN);
+  bev_pool_kernel<__half, float, TC, TN, 64*120, 192*256, false><<<gridSize, blockSize>>>(
+      c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+      interval_starts, interval_lengths, out);
+}
+
+
+extern "C"
 void bev_pool_half_half(int c, int n_intervals,
                         const __half *depth,
                         const __half *feat,
@@ -242,6 +335,35 @@ void bev_pool_half_half(int c, int n_intervals,
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
   bev_pool_kernel<__half, __half, TC, TN><<<gridSize, blockSize>>>(
+      c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+      interval_starts, interval_lengths, out);
+}
+
+extern "C"
+void bev_pool_half_half_nchw(int c, int n_intervals,
+                             const __half *depth,
+                             const __half *feat,
+                             const int *ranks_depth,
+                             const int *ranks_feat,
+                             const int *interval_starts,
+                             const int *interval_lengths,
+                             __half *out);
+
+void bev_pool_half_half_nchw(int c, int n_intervals,
+                             const __half *depth,
+                             const __half *feat,
+                             const int *ranks_depth,
+                             const int *ranks_feat,
+                             const int *interval_starts,
+                             const int *interval_lengths,
+                             __half *out) {
+  constexpr int TC = 1;
+  constexpr int TN = 4;
+  constexpr int BC = 64;
+  constexpr int BN = 8;
+  dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+  dim3 blockSize(BC, BN);
+  bev_pool_kernel<__half, __half, TC, TN, 64*120, 192*256, false><<<gridSize, blockSize>>>(
       c, n_intervals, depth, feat, ranks_depth, ranks_feat,
       interval_starts, interval_lengths, out);
 }
