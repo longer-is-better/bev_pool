@@ -5,7 +5,7 @@ import torch
 diff = True
 
 EXE = ctypes.cdll.LoadLibrary("./bev_pool.so")
-HPC = ctypes.cdll.LoadLibrary("hpc/b/libbev_pool_shared.so")
+HPC = ctypes.cdll.LoadLibrary("hpc/build/libbev_pool_shared.so")
 
 depth = torch.randn((7, 120, 64, 120), dtype=torch.float)
 feat = torch.randn((7, 64, 120, 128), dtype=torch.float)

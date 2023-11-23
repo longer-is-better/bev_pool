@@ -163,8 +163,8 @@ int main(){
         float opt = __half2float(out_opt[i]);
         // float opt = out_opt[i];
         // cout<<opt<<endl;
-        float err= std::fabs(out_opt[i]-out[i]);
-        // float err= std::fabs( __half2float(out_opt[i])-out[i]);
+        //float err= std::fabs(out_opt[i]-out[i]);
+        float err= std::fabs( __half2float(out_opt[i])-out[i]);
         if(err>max_err){
             max_err=err;
         }
