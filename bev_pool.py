@@ -52,9 +52,10 @@ EXE.tensor_NDHW_to_NHWD(ctypes.c_void_p(ranks_depth_nhwd.data_ptr()),
 
 feat_nchw = torch.permute(feat, (0, 3, 1, 2)).contiguous()
 
-def test_baseline_fp32_old():
+def test_flatmap():
     depth_local = depth.cuda()
     feat_local = feat.cuda()
+    bev_local = bev.cuda()
     ranks_depth_local = ranks_depth.cuda()
     ranks_feat_local = ranks_feat.cuda()
     ranks_bev_local = ranks_bev.cuda()
@@ -62,19 +63,22 @@ def test_baseline_fp32_old():
     interval_lengths_local = interval_lengths.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_baseline(ctypes.c_int(128),
-                        ctypes.c_int(n_intervals),
-                        ctypes.c_void_p(depth_local.data_ptr()),
-                        ctypes.c_void_p(feat_local.data_ptr()),
-                        ctypes.c_void_p(ranks_depth_local.data_ptr()),
-                        ctypes.c_void_p(ranks_feat_local.data_ptr()),
-                        ctypes.c_void_p(ranks_bev_local.data_ptr()),
-                        ctypes.c_void_p(interval_starts_local.data_ptr()),
-                        ctypes.c_void_p(interval_lengths_local.data_ptr()),
-                        ctypes.c_void_p(bev_baseline_float.data_ptr()))
+    EXE.bev_pool_flatmap(ctypes.c_int(128),
+                         ctypes.c_int(n_intervals),
+                         ctypes.c_void_p(depth_local.data_ptr()),
+                         ctypes.c_void_p(feat_local.data_ptr()),
+                         ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                         ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                         ctypes.c_void_p(ranks_bev_local.data_ptr()),
+                         ctypes.c_void_p(interval_starts_local.data_ptr()),
+                         ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                         ctypes.c_void_p(bev_local.data_ptr()))
     torch.cuda.synchronize()
     t1 = time.time()
-    print(f"baseline: {(t1-t0)*1000:.3f} ms")
+    print(f"flatmap: {(t1-t0)*1000:.3f} ms")
+    if diff and not torch.allclose(bev_local, bev_baseline_float, rtol=1e-03, atol=1e-04, equal_nan=False):
+      print("bev_baseline_float:", bev_baseline_float)
+      print("bev_local:", bev_local)
 
 
 def test_float_float():
@@ -398,6 +402,7 @@ if __name__ == "__main__":
     print("=== Iteration: ", i)
     test_hpc_bev_pool_v2()
     test_hpc_bev_pool_pack32_half()
+    test_flatmap()
     test_float_float()
     test_float_float_nhwd()
     test_float_float_nchw()

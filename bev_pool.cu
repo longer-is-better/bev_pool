@@ -1,7 +1,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "cuda_fp16.h"
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
 
 extern "C"
 void tensor_init(int *ranks_depth,
@@ -74,47 +75,68 @@ void tensor_NDHW_to_NHWD(int *ranks_depth, size_t num, int N, int D, int H, int 
 }
 
 
-extern "C" void bev_pool_baseline(int c, int n_intervals, const float *depth, const float *feat,
-                                  const int *ranks_depth, const int *ranks_feat,
-                                  const int *ranks_bev, const int *interval_starts,
-                                  const int *interval_lengths, float *out);
-__global__ void bev_pool_baseline_kernel(
-    int c, int n_intervals, const float *__restrict__ depth,
-    const float *__restrict__ feat, const int *__restrict__ ranks_depth,
+template<typename TensorType, typename AccType, const int TC, const int TN>
+__global__ void bev_pool_flatmap_kernel(
+    int C, int N, const TensorType *__restrict__ depth,
+    const TensorType *__restrict__ feat, const int *__restrict__ ranks_depth,
     const int *__restrict__ ranks_feat, const int *__restrict__ ranks_bev,
     const int *__restrict__ interval_starts,
-    const int *__restrict__ interval_lengths, float *__restrict__ out) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int index = idx / c;
-  int cur_c = idx % c;
-  if (index >= n_intervals)
-    return;
-  int interval_start = interval_starts[index];
-  int interval_length = interval_lengths[index];
+    const int *__restrict__ interval_lengths, TensorType *__restrict__ out) {
 
-  if (interval_start == -1)
-    return;
+  int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int tn_idx = blockIdx.y * blockDim.y + threadIdx.y;
 
-  float psum = 0;
-  const float *cur_depth;
-  const float *cur_feat;
-  for (int i = 0; i < interval_length; i++) {
-    cur_depth = depth + ranks_depth[interval_start + i];
-    cur_feat = feat + ranks_feat[interval_start + i] * c + cur_c;
-    psum += *cur_feat * *cur_depth;
+  for (int tc = 0; tc < TC; tc++) {
+    int c_idx = tc_idx * TC + tc;
+    if (c_idx >= C) continue;
+
+    int b_idx_last = -1;
+    int b_idx = 0;
+    TensorType psum = 0;
+
+    for (int tn = 0; tn < TN; tn++) {
+      int n_idx = tn_idx * TN + tn;
+      if (n_idx >= N) continue;
+      b_idx = ranks_bev[n_idx];
+
+      TensorType d = depth[ranks_depth[n_idx]];
+      TensorType f = feat[ranks_feat[n_idx]*C + c_idx];
+
+      if (b_idx == b_idx_last) {
+        psum += d*f;
+      } else {
+        if (b_idx_last != -1)
+          atomicAdd(&out[b_idx_last*C + c_idx], psum);
+        b_idx_last = b_idx;
+        psum = d * f;
+      }
+    }
+
+    if (b_idx_last != -1)
+      atomicAdd(&out[b_idx_last*C + c_idx], psum);
   }
-
-  const int *cur_rank = ranks_bev + interval_start;
-  float *cur_out = out + *cur_rank * c + cur_c;
-  *cur_out = psum;
 }
 
-void bev_pool_baseline(int c, int n_intervals, const float *depth, const float *feat,
-                       const int *ranks_depth, const int *ranks_feat,
-                       const int *ranks_bev, const int *interval_starts,
-                       const int *interval_lengths, float *out) {
-  bev_pool_baseline_kernel<<<(int)ceil(((double)n_intervals * c / 256)), 256>>>(
-      c, n_intervals, depth, feat, ranks_depth, ranks_feat, ranks_bev,
+extern "C" void bev_pool_flatmap(int c, int n_intervals, const float *depth, const float *feat,
+                                 const int *ranks_depth, const int *ranks_feat,
+                                 const int *ranks_bev, const int *interval_starts,
+                                 const int *interval_lengths, float *out);
+void bev_pool_flatmap(int C, int n_intervals, const float *depth, const float *feat,
+                      const int *ranks_depth, const int *ranks_feat,
+                      const int *ranks_bev, const int *interval_starts,
+                      const int *interval_lengths, float *out) {
+
+  constexpr int N = 2487077;
+  constexpr int TC = 1;
+  constexpr int TN = 90;
+  constexpr int BC = 128;
+  constexpr int BN = 2;
+  dim3 gridSize((C + TC * BC - 1)/(TC * BC), (N + TN * BN - 1)/(TN * BN));
+  dim3 blockSize(BC, BN);
+
+  cudaMemset(out, 0, 192*256*C*sizeof(float));
+  bev_pool_flatmap_kernel<float, float, TC, TN><<<gridSize, blockSize>>>(
+      C, N, depth, feat, ranks_depth, ranks_feat, ranks_bev,
       interval_starts, interval_lengths, out);
 }
 
@@ -136,12 +158,12 @@ __global__ void bev_pool_kernel(
   for (int tn = 0; tn < TN; tn++) {
     AccType psum[TC];
     int n_idx = tn_idx * TN + tn;
-    if (n_idx >= n_intervals) return;
+    if (n_idx >= n_intervals) break;
 
     int interval_start = __ldg(&interval_starts[n_idx]);
     int interval_length = __ldg(&interval_lengths[n_idx]);
 
-    if (interval_start == -1) return;
+    if (interval_start == -1) break;
 
     for (int tc = 0; tc < TC; tc++) {
       psum[tc] = 0;
@@ -176,7 +198,7 @@ __global__ void bev_pool_kernel(
 #pragma unroll
     for (int tc = 0; tc < TC; tc++) {
       int c_idx = tc_idx * TC + tc;
-      if (c_idx >= C) continue;
+      if (c_idx >= C) break;
       int tid;
       if (FEAT_CL)
         tid = n_idx * C + c_idx;
