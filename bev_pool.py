@@ -16,7 +16,7 @@ OH = EXE.get_config(ctypes.c_char_p(b"OH"))
 OW = EXE.get_config(ctypes.c_char_p(b"OW"))
 P = EXE.get_config(ctypes.c_char_p(b'P'))
 
-print(f"N={N}, D={D}, IH={IH}, IW={IW}, {C}, OH={OH}, OW={OW}, P={P}")
+print(f"N={N}, D={D}, IH={IH}, IW={IW}, C={C}, OH={OH}, OW={OW}, P={P}")
 
 depth = torch.randn((N, D, IH, IW), dtype=torch.float)
 feat = torch.randn((N, IH, IW, C), dtype=torch.float)
