@@ -7,15 +7,26 @@ diff = True
 EXE = ctypes.cdll.LoadLibrary("./bev_pool.so")
 HPC = ctypes.cdll.LoadLibrary("hpc/build/libbev_pool_shared.so")
 
-depth = torch.randn((7, 120, 64, 120), dtype=torch.float)
-feat = torch.randn((7, 64, 120, 128), dtype=torch.float)
-bev = torch.ones(size=[1, 192, 256, 128], dtype=torch.float)
-bev_nchw = torch.clone(bev).reshape(1, 128, 192, 256)
+N = EXE.get_config(ctypes.c_char_p(b'N'))
+D = EXE.get_config(ctypes.c_char_p(b'D'))
+IH = EXE.get_config(ctypes.c_char_p(b'IH'))
+IW = EXE.get_config(ctypes.c_char_p(b'IW'))
+C = EXE.get_config(ctypes.c_char_p(b'C'))
+OH = EXE.get_config(ctypes.c_char_p(b"OH"))
+OW = EXE.get_config(ctypes.c_char_p(b"OW"))
+P = EXE.get_config(ctypes.c_char_p(b'P'))
 
-bev_baseline_float = torch.zeros(size=[1, 192, 256, 128], dtype=torch.float, device='cuda')
-bev_baseline_half = torch.zeros(size=[1, 192, 256, 128], dtype=torch.half, device='cuda')
-bev_baseline_float_nchw = torch.clone(bev).reshape(1, 128, 192, 256).cuda()
-bev_baseline_half_nchw = torch.clone(bev).half().reshape(1, 128, 192, 256).cuda()
+print(f"N={N}, D={D}, IH={IH}, IW={IW}, {C}, OH={OH}, OW={OW}, P={P}")
+
+depth = torch.randn((N, D, IH, IW), dtype=torch.float)
+feat = torch.randn((N, IH, IW, C), dtype=torch.float)
+bev = torch.ones(size=[1, OH, OW, C], dtype=torch.float)
+bev_nchw = torch.clone(bev).reshape(1, C, OH, OW)
+
+bev_baseline_float = torch.zeros(size=[1, OH, OW, C], dtype=torch.float, device='cuda')
+bev_baseline_half = torch.zeros(size=[1, OH, OW, C], dtype=torch.half, device='cuda')
+bev_baseline_float_nchw = torch.clone(bev).reshape(1, C, OH, OW).cuda()
+bev_baseline_half_nchw = torch.clone(bev).half().reshape(1, C, OH, OW).cuda()
 
 ranks_depth = torch.zeros((4000000), dtype=torch.int32)
 ranks_feat = torch.zeros((4000000), dtype=torch.int32)
@@ -28,8 +39,8 @@ interval_lengths_e = torch.zeros((50000), dtype=torch.int32)
 
 
 
-n_intervals = 192 * 256 #48495
-ranks_bev_mask = torch.zeros((192*256), dtype=torch.int8)
+n_intervals = OH * OW
+ranks_bev_mask = torch.zeros(OH * OW, dtype=torch.int8)
 
 EXE.tensor_init(ctypes.c_void_p(ranks_depth.data_ptr()),
               ctypes.c_void_p(ranks_feat.data_ptr()),
@@ -40,15 +51,14 @@ EXE.tensor_init(ctypes.c_void_p(ranks_depth.data_ptr()),
               ctypes.c_void_p(interval_starts_e.data_ptr()),
               ctypes.c_void_p(interval_lengths_e.data_ptr()))
 
-N, D, H, W = 7, 120, 64, 120
 depth_nhwd = torch.permute(depth, (0, 2, 3, 1)).contiguous()
 ranks_depth_nhwd = ranks_depth.clone()
 EXE.tensor_NDHW_to_NHWD(ctypes.c_void_p(ranks_depth_nhwd.data_ptr()),
                    ctypes.c_ulonglong(4000000),
                    ctypes.c_int(N),
                    ctypes.c_int(D),
-                   ctypes.c_int(H),
-                   ctypes.c_int(W))
+                   ctypes.c_int(IH),
+                   ctypes.c_int(IW))
 
 feat_nchw = torch.permute(feat, (0, 3, 1, 2)).contiguous()
 
@@ -63,7 +73,7 @@ def test_flatmap():
     interval_lengths_local = interval_lengths.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_flatmap(ctypes.c_int(128),
+    EXE.bev_pool_flatmap(ctypes.c_int(C),
                          ctypes.c_int(n_intervals),
                          ctypes.c_void_p(depth_local.data_ptr()),
                          ctypes.c_void_p(feat_local.data_ptr()),
@@ -91,7 +101,7 @@ def test_float_float():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_float_float(ctypes.c_int(128),
+    EXE.bev_pool_float_float(ctypes.c_int(C),
                            ctypes.c_int(n_intervals),
                            ctypes.c_void_p(depth_local.data_ptr()),
                            ctypes.c_void_p(feat_local.data_ptr()),
@@ -117,7 +127,7 @@ def test_float_float_nhwd():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_float_float(ctypes.c_int(128),
+    EXE.bev_pool_float_float(ctypes.c_int(C),
                              ctypes.c_int(n_intervals),
                              ctypes.c_void_p(depth_local.data_ptr()),
                              ctypes.c_void_p(feat_local.data_ptr()),
@@ -143,7 +153,7 @@ def test_float_float_nchw():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_float_float_nchw(ctypes.c_int(128),
+    EXE.bev_pool_float_float_nchw(ctypes.c_int(C),
                                   ctypes.c_int(n_intervals),
                                   ctypes.c_void_p(depth_local.data_ptr()),
                                   ctypes.c_void_p(feat_local.data_ptr()),
@@ -171,7 +181,7 @@ def test_half_float():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_half_float(ctypes.c_int(128),
+    EXE.bev_pool_half_float(ctypes.c_int(C),
                           ctypes.c_int(n_intervals),
                           ctypes.c_void_p(depth_local.data_ptr()),
                           ctypes.c_void_p(feat_local.data_ptr()),
@@ -197,7 +207,7 @@ def test_half_float_nhwd():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_half_float(ctypes.c_int(128),
+    EXE.bev_pool_half_float(ctypes.c_int(C),
                           ctypes.c_int(n_intervals),
                           ctypes.c_void_p(depth_local.data_ptr()),
                           ctypes.c_void_p(feat_local.data_ptr()),
@@ -224,7 +234,7 @@ def test_half_float_nchw():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_half_float_nchw(ctypes.c_int(128),
+    EXE.bev_pool_half_float_nchw(ctypes.c_int(C),
                                  ctypes.c_int(n_intervals),
                                  ctypes.c_void_p(depth_local.data_ptr()),
                                  ctypes.c_void_p(feat_local.data_ptr()),
@@ -251,7 +261,7 @@ def test_half_half():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_half_half(ctypes.c_int(128),
+    EXE.bev_pool_half_half(ctypes.c_int(C),
                          ctypes.c_int(n_intervals),
                          ctypes.c_void_p(depth_local.data_ptr()),
                          ctypes.c_void_p(feat_local.data_ptr()),
@@ -277,7 +287,7 @@ def test_half_half_nhwd():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_half_half(ctypes.c_int(128),
+    EXE.bev_pool_half_half(ctypes.c_int(C),
                          ctypes.c_int(n_intervals),
                          ctypes.c_void_p(depth_local.data_ptr()),
                          ctypes.c_void_p(feat_local.data_ptr()),
@@ -304,7 +314,7 @@ def test_half_half_nchw():
     interval_lengths_local = interval_lengths_e.cuda()
 
     t0 = time.time()
-    EXE.bev_pool_half_half_nchw(ctypes.c_int(128),
+    EXE.bev_pool_half_half_nchw(ctypes.c_int(C),
                                 ctypes.c_int(n_intervals),
                                 ctypes.c_void_p(depth_local.data_ptr()),
                                 ctypes.c_void_p(feat_local.data_ptr()),
@@ -323,9 +333,9 @@ def test_half_half_nchw():
 
 n_interval = 50000
 n_valid_points = 4000000
-n_out_grid_points = 1 * 192 * 256 * 128
-n_total_depth_score = 7 * 120 * 64 * 120
-n_total_img_feat = 7 * 64 * 120 * 128
+n_out_grid_points = 1 * OH * OW * C #192 * 256 * 128
+n_total_depth_score = N * D * IH * IW #7 * 120 * 64 * 120
+n_total_img_feat = N * C * IH * IW #7 * 64 * 120 * 128
 def test_hpc_bev_pool_v2():
     depth_local = depth.cuda()
     feat_local = feat.cuda()
@@ -336,7 +346,7 @@ def test_hpc_bev_pool_v2():
     interval_lengths_local = interval_lengths.cuda()
 
     t0 = time.time()
-    HPC.bev_pool_v2(ctypes.c_int(128),
+    HPC.bev_pool_v2(ctypes.c_int(C),
                   ctypes.c_int(n_interval),
                   ctypes.c_int(n_valid_points),
                   ctypes.c_int(n_out_grid_points),
@@ -368,7 +378,7 @@ def test_hpc_bev_pool_pack32_half():
     interval_lengths_local = interval_lengths.cuda()
 
     t0 = time.time()
-    HPC.bev_pool_pack32_half(ctypes.c_int(128),
+    HPC.bev_pool_pack32_half(ctypes.c_int(C),
                            ctypes.c_int(n_interval),
                            ctypes.c_int(n_valid_points),
                            ctypes.c_int(n_out_grid_points),

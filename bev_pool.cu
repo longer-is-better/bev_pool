@@ -1,8 +1,67 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+
+// read from data
+#include "data/config.h.in"
+
+#if 0
+constexpr int N = 7;
+constexpr int D = 120;
+constexpr int IH = 64;
+constexpr int IW = 120;
+constexpr int C = 128;
+constexpr int OH = 80;
+constexpr int OW = 160;
+constexpr int P = 1606542;
+#endif
+
+extern "C"
+int get_config(char *config) {
+  int ret = -1;
+  if (config == nullptr)
+    return ret;
+
+  char c1 = *config, c2 = *(config + 1);
+  switch (c1) {
+  case 'N':
+    ret = N;
+    break;
+  case 'D':
+    ret = D;
+    break;
+  case 'I':
+    ret = (c2 == 'H') ? IH : (c2 == 'W') ? IW : -1;
+    break;
+  case 'O':
+    ret = (c2 == 'H') ? OH : (c2 == 'W') ? OW : -1;
+    break;
+  case 'C':
+    ret = C;
+    break;
+  case 'P':
+    ret = P;
+    break;
+  default:
+    ret = -1;
+    break;
+  }
+  return ret;
+}
+
+void read_file(const char *filename, size_t element_sz, size_t size, void *buffer) {
+  FILE *fp = fopen(filename, "rb");
+  if (fp == nullptr) {
+    printf("fopen error: %s\n", filename);
+    return;
+  }
+  size_t num = fread(buffer, element_sz, size, fp);
+  if (num != size) {
+    printf("read error: %s\n", filename);
+  };
+  fclose(fp);
+}
 
 extern "C"
 void tensor_init(int *ranks_depth,
@@ -22,11 +81,11 @@ void tensor_init(int *ranks_depth,
                  int *interval_starts_e,
                  int *interval_lengths_e) {
 
-  {FILE *fp = fopen("data/ranks_depth.bin", "rb"); size_t num = fread(ranks_depth, sizeof(int), 4000000, fp); if (num != 4000000) { printf("read error: ranks_depth\n");}; fclose(fp);}
-  {FILE *fp = fopen("data/ranks_feat.bin", "rb"); size_t num = fread(ranks_feat, sizeof(int), 4000000, fp); if (num != 4000000) { printf("read error: ranks_feat\n");}; fclose(fp);}
-  {FILE *fp = fopen("data/ranks_bev.bin", "rb"); size_t num = fread(ranks_bev, sizeof(int), 4000000, fp); if (num != 4000000) { printf("read error: ranks_bev\n");}; fclose(fp);}
-  {FILE *fp = fopen("data/interval_starts.bin", "rb"); size_t num = fread(interval_starts, sizeof(int), 50000, fp); if (num != 50000) { printf("read error: interval_starts\n");}; fclose(fp);}
-  {FILE *fp = fopen("data/interval_lengths.bin", "rb"); size_t num = fread(interval_lengths, sizeof(int), 50000, fp); if (num != 50000) { printf("read error: interval_lengths\n");}; fclose(fp);}
+  read_file("data/ranks_depth.bin", sizeof(float), 4000000, ranks_depth);
+  read_file("data/ranks_feat.bin", sizeof(float), 4000000, ranks_feat);
+  read_file("data/ranks_bev.bin", sizeof(float), 4000000, ranks_bev);
+  read_file("data/interval_starts.bin", sizeof(float), 50000, interval_starts);
+  read_file("data/interval_lengths.bin", sizeof(float), 50000, interval_lengths);
 
   for (int i = 0; i < 4000000; i++) {
     *(int*)&ranks_bev[i] = (int)*(float*)&ranks_bev[i];
@@ -51,8 +110,6 @@ void tensor_init(int *ranks_depth,
       j++;
     }
   }
-
-
 }
 
 
@@ -126,17 +183,16 @@ void bev_pool_flatmap(int C, int n_intervals, const float *depth, const float *f
                       const int *ranks_bev, const int *interval_starts,
                       const int *interval_lengths, float *out) {
 
-  constexpr int N = 2487077;
   constexpr int TC = 1;
   constexpr int TN = 90;
-  constexpr int BC = 128;
+  constexpr int BC = 96;
   constexpr int BN = 2;
-  dim3 gridSize((C + TC * BC - 1)/(TC * BC), (N + TN * BN - 1)/(TN * BN));
+  dim3 gridSize((C + TC * BC - 1)/(TC * BC), (P + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
 
-  cudaMemset(out, 0, 192*256*C*sizeof(float));
+  cudaMemset(out, 0, OH*OW*C*sizeof(float));
   bev_pool_flatmap_kernel<float, float, TC, TN><<<gridSize, blockSize>>>(
-      C, N, depth, feat, ranks_depth, ranks_feat, ranks_bev,
+      C, P, depth, feat, ranks_depth, ranks_feat, ranks_bev,
       interval_starts, interval_lengths, out);
 }
 
@@ -268,7 +324,7 @@ void bev_pool_float_float_nchw(int c, int n_intervals,
   constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
-  bev_pool_kernel<float, float, TC, TN, 64*120, 192*256, false><<<gridSize, blockSize>>>(
+  bev_pool_kernel<float, float, TC, TN, IH*IW, OH*OW, false><<<gridSize, blockSize>>>(
       c, n_intervals, depth, feat, ranks_depth, ranks_feat,
       interval_starts, interval_lengths, out);
 }
@@ -326,7 +382,7 @@ void bev_pool_half_float_nchw(int c, int n_intervals,
   constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
-  bev_pool_kernel<__half, float, TC, TN, 64*120, 192*256, false><<<gridSize, blockSize>>>(
+  bev_pool_kernel<__half, float, TC, TN, IH*IW, OH*OW, false><<<gridSize, blockSize>>>(
       c, n_intervals, depth, feat, ranks_depth, ranks_feat,
       interval_starts, interval_lengths, out);
 }
@@ -385,7 +441,7 @@ void bev_pool_half_half_nchw(int c, int n_intervals,
   constexpr int BN = 8;
   dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
   dim3 blockSize(BC, BN);
-  bev_pool_kernel<__half, __half, TC, TN, 64*120, 192*256, false><<<gridSize, blockSize>>>(
+  bev_pool_kernel<__half, __half, TC, TN, IH*IW, OH*OW, false><<<gridSize, blockSize>>>(
       c, n_intervals, depth, feat, ranks_depth, ranks_feat,
       interval_starts, interval_lengths, out);
 }

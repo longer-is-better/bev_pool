@@ -1,0 +1,9 @@
+constexpr int N = 7;
+constexpr int D = 120;
+constexpr int IH = 64;
+constexpr int IW = 120;
+constexpr int C = 128;
+constexpr int OH = 80;
+constexpr int OW = 160;
+constexpr int P = 1606542;
+
