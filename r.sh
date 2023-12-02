@@ -31,7 +31,7 @@ function build_hpc() {
   mkdir -p hpc/build
   cd hpc/build
   if [ ! -f Makefile ]; then
-    cmake  -DCMAKE_CUDA_ARCHITECTURES="$CC_NUM" ..
+    cmake -DCMAKE_CUDA_ARCHITECTURES="$CC_NUM" -DCMAKE_CUDA_COMPILER=$(which nvcc) ..
   fi
   make -j
   cd -
