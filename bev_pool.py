@@ -2,8 +2,7 @@ import ctypes
 import time
 import torch
 
-diff = True
-
+print_diff = False
 EXE = ctypes.cdll.LoadLibrary("./bev_pool.so")
 HPC = ctypes.cdll.LoadLibrary("hpc/build/libbev_pool_shared.so")
 
@@ -60,7 +59,6 @@ EXE.tensor_NDHW_to_NHWD(ctypes.c_void_p(ranks_depth_nhwd.data_ptr()),
 
 feat_nchw = torch.permute(feat, (0, 3, 1, 2)).contiguous()
 
-print_diff = True
 def compare_tensors(tensor1, tensor2, rtol=1e-03, atol=1e-05):
     closeness = torch.isclose(tensor1, tensor2, atol=atol, rtol=rtol)
     if not torch.all(closeness):
@@ -403,8 +401,7 @@ def test_hpc_bev_pool_pack32_half():
 
 
 if __name__ == "__main__":
-  if diff:
-    test_hpc_bev_pool_v2()
+  test_hpc_bev_pool_v2()
 
   for i in range(0, 2):
     if i >= 1:
