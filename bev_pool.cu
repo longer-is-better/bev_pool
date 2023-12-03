@@ -233,7 +233,7 @@ __global__ void bev_pool_kernel(
         if (c_idx >= C) continue;
 
         TensorType f;
-        if (FEAT_CL)
+        if constexpr (FEAT_CL)
           f = __ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
         else {// NCHW
           int idx = ranks_feat[interval_start + i];
@@ -256,7 +256,7 @@ __global__ void bev_pool_kernel(
       int c_idx = tc_idx * TC + tc;
       if (c_idx >= C) break;
       int tid;
-      if (FEAT_CL)
+      if constexpr (FEAT_CL)
         tid = n_idx * C + c_idx;
       else {
         int n = n_idx / OHW;
