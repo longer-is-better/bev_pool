@@ -7,3 +7,7 @@ constexpr int OH = 80;
 constexpr int OW = 160;
 constexpr int P = 1606542;
 
+constexpr int TC = 2;
+constexpr int TN = 1;
+constexpr int BC = 64;
+constexpr int BN = 8;

@@ -273,11 +273,6 @@ __global__ void bev_pool_kernel(
   }
 }
 
-constexpr int TC = 3;
-constexpr int TN = 1;
-constexpr int BC = 32;
-constexpr int BN = 8;
-
 extern "C"
 void bev_pool_float_float_float(int c, int n_intervals,
                                 const float *depth,
