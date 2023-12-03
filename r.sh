@@ -41,6 +41,6 @@ build_hpc
 if [ ! -L data ]; then
   ln -s data.2 data
 fi
-nvcc -O3 -arch=$CC --use_fast_math bev_pool.cu -o bev_pool.so -shared -Xcompiler -fPIC
+nvcc -O3 -arch=$CC --use_fast_math -std=c++17 bev_pool.cu -o bev_pool.so -shared -Xcompiler -fPIC
 
 CUDA_LAUNCH_BLOCKING=1 python3 ./bev_pool.py

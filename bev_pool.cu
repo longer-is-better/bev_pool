@@ -242,9 +242,9 @@ __global__ void bev_pool_kernel(
           f = __ldg(&feat[n*C*IHW + c_idx*IHW + hw]);
         }
 
-        if (std::is_same<TensorType, __half>::value && std::is_same<AccType, __half>::value)
+        if constexpr (std::is_same<TensorType, __half>::value && std::is_same<AccType, __half>::value)
           psum[tc] = __hfma(d, f, psum[tc]);
-        else if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
+        else if constexpr (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
           psum[tc] = __fmaf_rn(__half2float(d), __half2float(f), psum[tc]);
         else // (std::is_same<TensorType, float>::value && std::is_same<AccType, float>::value)
           psum[tc] = __fmaf_rn(d, f, psum[tc]);
@@ -263,7 +263,7 @@ __global__ void bev_pool_kernel(
         int hw = n_idx % OHW;
         tid = n*C*OHW + c_idx*OHW + hw;
       }
-      if (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
+      if constexpr (std::is_same<TensorType, __half>::value && std::is_same<AccType, float>::value)
         out[tid] = __float2half(psum[tc]);
       else
         out[tid] = psum[tc];
