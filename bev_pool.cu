@@ -535,3 +535,18 @@ void bev_pool_v2_half_float_float(int c, int n_intervals,
         interval_starts, interval_lengths, out);
 }
 
+extern "C"
+void bev_pool_v2_half_float_half(int c, int n_intervals,
+                                  const __half *depth,
+                                  const float *feat,
+                                  const int *ranks_depth,
+                                  const int *ranks_feat,
+                                  const int *interval_starts,
+                                  const int *interval_lengths,
+                                  __half *out) {
+    dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+    dim3 blockSize(BC, BN);
+    bev_pool_kernel_v2<__half, float, __half, TC, TN><<<gridSize, blockSize>>>(
+        c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+        interval_starts, interval_lengths, out);
+}
