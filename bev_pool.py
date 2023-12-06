@@ -326,6 +326,102 @@ def test_bf16_bf16_bf16():
     print(f"bf16_bf16_bf16: {(t1-t0)*1000:.3f} ms")
     compare_tensors(bev_local.float(), bev_baseline_float)
 
+def test_v2_float_float_float():
+    depth_local = depth.cuda()
+    feat_local = feat.cuda()
+    bev_local = bev.cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    interval_starts_local = interval_starts_e.cuda()
+    interval_lengths_local = interval_lengths_e.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v2_float_float_float(ctypes.c_int(C),
+                                      ctypes.c_int(n_intervals),
+                                      ctypes.c_void_p(depth_local.data_ptr()),
+                                      ctypes.c_void_p(feat_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                      ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                      ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                      ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v2: float_float_float: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local.float(), bev_baseline_float)
+
+def test_v2_float_half_half():
+    depth_local = depth.cuda()
+    feat_local = feat.half().cuda()
+    bev_local = bev.half().cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    interval_starts_local = interval_starts_e.cuda()
+    interval_lengths_local = interval_lengths_e.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v2_float_half_half(ctypes.c_int(C),
+                                    ctypes.c_int(n_intervals),
+                                    ctypes.c_void_p(depth_local.data_ptr()),
+                                    ctypes.c_void_p(feat_local.data_ptr()),
+                                    ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                    ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                    ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                    ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                    ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v2: float_half_half: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local.float(), bev_baseline_float)
+
+def test_v2_float_half_float():
+    depth_local = depth.cuda()
+    feat_local = feat.half().cuda()
+    bev_local = bev.cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    interval_starts_local = interval_starts_e.cuda()
+    interval_lengths_local = interval_lengths_e.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v2_float_half_float(ctypes.c_int(C),
+                                     ctypes.c_int(n_intervals),
+                                     ctypes.c_void_p(depth_local.data_ptr()),
+                                     ctypes.c_void_p(feat_local.data_ptr()),
+                                     ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                     ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                     ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                     ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                     ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v2: float_half_float: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local, bev_baseline_float)
+
+def test_v2_half_half_float():
+    depth_local = depth.half().cuda()
+    feat_local = feat.half().cuda()
+    bev_local = bev.cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    interval_starts_local = interval_starts_e.cuda()
+    interval_lengths_local = interval_lengths_e.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v2_half_half_float(ctypes.c_int(C),
+                                    ctypes.c_int(n_intervals),
+                                    ctypes.c_void_p(depth_local.data_ptr()),
+                                    ctypes.c_void_p(feat_local.data_ptr()),
+                                    ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                    ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                    ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                    ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                    ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v2: half_half_float: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local, bev_baseline_float)
+
 
 
 n_interval = 50000
@@ -344,21 +440,21 @@ def test_hpc_bev_pool_v2():
 
     t0 = time.time()
     HPC.bev_pool_v2(ctypes.c_int(C),
-                  ctypes.c_int(n_interval),
-                  ctypes.c_int(n_valid_points),
-                  ctypes.c_int(n_out_grid_points),
-                  ctypes.c_int(n_total_depth_score),
-                  ctypes.c_int(n_total_img_feat),
+                    ctypes.c_int(n_interval),
+                    ctypes.c_int(n_valid_points),
+                    ctypes.c_int(n_out_grid_points),
+                    ctypes.c_int(n_total_depth_score),
+                    ctypes.c_int(n_total_img_feat),
 
-                  ctypes.c_void_p(depth_local.data_ptr()),
-                  ctypes.c_void_p(feat_local.data_ptr()),
-                  ctypes.c_void_p(ranks_depth_local.data_ptr()),
-                  ctypes.c_void_p(ranks_feat_local.data_ptr()),
-                  ctypes.c_void_p(ranks_bev_local.data_ptr()),
-                  ctypes.c_void_p(interval_starts_local.data_ptr()),
-                  ctypes.c_void_p(interval_lengths_local.data_ptr()),
-                  ctypes.c_void_p(bev_baseline_float.data_ptr()),
-                  ctypes.c_longlong(0))
+                    ctypes.c_void_p(depth_local.data_ptr()),
+                    ctypes.c_void_p(feat_local.data_ptr()),
+                    ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                    ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                    ctypes.c_void_p(ranks_bev_local.data_ptr()),
+                    ctypes.c_void_p(interval_starts_local.data_ptr()),
+                    ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                    ctypes.c_void_p(bev_baseline_float.data_ptr()),
+                    ctypes.c_longlong(0))
     torch.cuda.synchronize()
     t1 = time.time()
     global bev_baseline_float_nchw
@@ -377,21 +473,21 @@ def test_hpc_bev_pool_pack32_half():
 
     t0 = time.time()
     HPC.bev_pool_pack32_half(ctypes.c_int(C),
-                           ctypes.c_int(n_interval),
-                           ctypes.c_int(n_valid_points),
-                           ctypes.c_int(n_out_grid_points),
-                           ctypes.c_int(n_total_depth_score),
-                           ctypes.c_int(n_total_img_feat),
+                             ctypes.c_int(n_interval),
+                             ctypes.c_int(n_valid_points),
+                             ctypes.c_int(n_out_grid_points),
+                             ctypes.c_int(n_total_depth_score),
+                             ctypes.c_int(n_total_img_feat),
 
-                           ctypes.c_void_p(depth_local.data_ptr()),
-                           ctypes.c_void_p(feat_local.data_ptr()),
-                           ctypes.c_void_p(ranks_depth_local.data_ptr()),
-                           ctypes.c_void_p(ranks_feat_local.data_ptr()),
-                           ctypes.c_void_p(ranks_bev_local.data_ptr()),
-                           ctypes.c_void_p(interval_starts_local.data_ptr()),
-                           ctypes.c_void_p(interval_lengths_local.data_ptr()),
-                           ctypes.c_void_p(bev_local.data_ptr()),
-                           ctypes.c_longlong(0))
+                             ctypes.c_void_p(depth_local.data_ptr()),
+                             ctypes.c_void_p(feat_local.data_ptr()),
+                             ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                             ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                             ctypes.c_void_p(ranks_bev_local.data_ptr()),
+                             ctypes.c_void_p(interval_starts_local.data_ptr()),
+                             ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                             ctypes.c_void_p(bev_local.data_ptr()),
+                             ctypes.c_longlong(0))
     torch.cuda.synchronize()
     t1 = time.time()
     print(f"hpc:bev_pool_pack32_half: {(t1-t0)*1000:.3f} ms")
@@ -424,3 +520,8 @@ if __name__ == "__main__":
     test_bf16_bf16_bf16()
     test_bf16_float_float()
 
+    # v2
+    test_v2_float_float_float()
+    test_v2_float_half_half()
+    test_v2_float_half_float()
+    test_v2_half_half_float()
