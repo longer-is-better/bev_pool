@@ -32,11 +32,14 @@ interval_starts = torch.zeros((50000), dtype=torch.int32)
 interval_lengths = torch.zeros((50000), dtype=torch.int32)
 interval_starts_e = torch.zeros((50000), dtype=torch.int32)
 interval_lengths_e = torch.zeros((50000), dtype=torch.int32)
+interval_starts_x = torch.zeros((3000000), dtype=torch.int32)
+interval_lengths_x = torch.zeros((3000000), dtype=torch.int32)
 
 
 
 
 n_intervals = OH * OW
+n_intervals_x = ctypes.c_int(0)
 ranks_bev_mask = torch.zeros(OH * OW, dtype=torch.int8)
 
 EXE.tensor_init(ctypes.c_void_p(ranks_depth.data_ptr()),
@@ -46,7 +49,10 @@ EXE.tensor_init(ctypes.c_void_p(ranks_depth.data_ptr()),
                 ctypes.c_void_p(interval_lengths.data_ptr()),
                 ctypes.c_void_p(ranks_bev_mask.data_ptr()),
                 ctypes.c_void_p(interval_starts_e.data_ptr()),
-                ctypes.c_void_p(interval_lengths_e.data_ptr()))
+                ctypes.c_void_p(interval_lengths_e.data_ptr()),
+                ctypes.c_void_p(interval_starts_x.data_ptr()),
+                ctypes.c_void_p(interval_lengths_x.data_ptr()),
+                ctypes.pointer(n_intervals_x))
 
 depth_nhwd = torch.permute(depth, (0, 2, 3, 1)).contiguous()
 ranks_depth_nhwd = ranks_depth.clone()
@@ -470,6 +476,32 @@ def test_v2_half_float_half():
     print(f"v2: half_float_half: {(t1-t0)*1000:.3f} ms")
     compare_tensors(bev_local.float(), bev_baseline_float)
 
+def test_v3_float_float_float():
+    depth_local = depth.cuda()
+    feat_local = feat.cuda()
+    bev_local = bev.cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    ranks_bev_local = ranks_bev.cuda()
+    interval_starts_local = interval_starts_x.cuda()
+    interval_lengths_local = interval_lengths_x.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v3_float_float_float(ctypes.c_int(C),
+                                      n_intervals_x,
+                                      ctypes.c_void_p(depth_local.data_ptr()),
+                                      ctypes.c_void_p(feat_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_bev_local.data_ptr()),
+                                      ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                      ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                      ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v3: float_float_float: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local, bev_baseline_float)
+
 
 
 n_interval = 50000
@@ -519,6 +551,7 @@ def test_hpc_bev_pool_pack32_half():
     interval_starts_local = interval_starts.cuda()
     interval_lengths_local = interval_lengths.cuda()
 
+    #bev_local.zero_();
     t0 = time.time()
     HPC.bev_pool_pack32_half(ctypes.c_int(C),
                              ctypes.c_int(n_interval),
@@ -552,26 +585,29 @@ if __name__ == "__main__":
       print_diff = False
 
     print("=== Iteration: ", i)
-    test_hpc_bev_pool_v2()
-    test_hpc_bev_pool_pack32_half()
-    test_flatmap()
+    #test_hpc_bev_pool_v2()
+    #test_hpc_bev_pool_pack32_half()
+    #test_flatmap()
 
-    test_float_float_float_nhwd()
-    test_float_float_float_nchw()
-    test_float_float_float()
+    #test_float_float_float_nhwd()
+    #test_float_float_float_nchw()
+    #test_float_float_float()
 
-    test_half_float_float()
-    test_half_half_half()
-    test_half_float_half()
+    #test_half_float_float()
+    #test_half_half_half()
+    #test_half_float_half()
 
-    test_bf16_float_bf16()
-    test_bf16_bf16_bf16()
-    test_bf16_float_float()
+    #test_bf16_float_bf16()
+    #test_bf16_bf16_bf16()
+    #test_bf16_float_float()
 
-    # v2
-    test_v2_float_float_float()
-    test_v2_float_half_half()
-    test_v2_float_half_float()
-    test_v2_half_half_float()
-    test_v2_half_float_half()
-    test_v2_half_float_float()
+    ## v2
+    #test_v2_float_float_float()
+    #test_v2_float_half_half()
+    #test_v2_float_half_float()
+    #test_v2_half_half_float()
+    #test_v2_half_float_half()
+    #test_v2_half_float_float()
+
+    ## v3
+    test_v3_float_float_float()

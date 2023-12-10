@@ -64,6 +64,7 @@ void read_file(const char *filename, size_t element_sz, size_t size, void *buffe
   fclose(fp);
 }
 
+constexpr int MIL = 100; // max interval length
 extern "C"
 void tensor_init(int *ranks_depth,
                  int *ranks_feat,
@@ -72,15 +73,10 @@ void tensor_init(int *ranks_depth,
                  int *interval_lengths,
                  int8_t *ranks_bev_mask,
                  int *interval_starts_e,
-                 int *interval_lengths_e);
-void tensor_init(int *ranks_depth,
-                 int *ranks_feat,
-                 int *ranks_bev,
-                 int *interval_starts,
-                 int *interval_lengths,
-                 int8_t *ranks_bev_mask,
-                 int *interval_starts_e,
-                 int *interval_lengths_e) {
+                 int *interval_lengths_e,
+                 int *interval_starts_x,
+                 int *interval_lengths_x,
+                 int *n_intervals_x) {
 
   read_file("data/ranks_depth.bin", sizeof(float), 4000000, ranks_depth);
   read_file("data/ranks_feat.bin", sizeof(float), 4000000, ranks_feat);
@@ -111,6 +107,26 @@ void tensor_init(int *ranks_depth,
       j++;
     }
   }
+
+  int k = 0;
+  for (int i = 0; i < 50000; i++) {
+    int len = interval_lengths[i];
+    if (len != -1) {
+      if (len <= MIL) {
+        interval_starts_x[k] = interval_starts[i];
+        interval_lengths_x[k] = interval_lengths[i];
+        k++;
+      } else {
+        int ext = (len + MIL - 1) / MIL;
+        for  (int e = 0; e < ext; e++) {
+          interval_lengths_x[k] = (e < (ext - 1)) ? MIL : (len - MIL * e);
+          interval_starts_x[k] = interval_starts[i] + MIL * e;
+          k++;
+        }
+      }
+    }
+  }
+  *n_intervals_x = k;
 }
 
 
@@ -548,5 +564,83 @@ void bev_pool_v2_half_float_half(int c, int n_intervals,
     dim3 blockSize(BC, BN);
     bev_pool_kernel_v2<__half, float, __half, TC, TN><<<gridSize, blockSize>>>(
         c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+        interval_starts, interval_lengths, out);
+}
+
+template<typename DType, typename FType, typename OType, int TC, int TN>
+__global__ void bev_pool_kernel_v3(
+    int C, int n_intervals,
+    const DType *__restrict__ depth,
+    const FType *__restrict__ feat,
+    const int *__restrict__ ranks_depth,
+    const int *__restrict__ ranks_feat,
+    const int *__restrict__ ranks_bev,
+    const int *__restrict__ interval_starts,
+    const int *__restrict__ interval_lengths,
+    OType *__restrict__ out) {
+
+  int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int tn_idx = blockIdx.y * blockDim.y + threadIdx.y;
+
+#pragma unroll
+  for (int tn = 0; tn < TN; tn++) {
+    float psum[TC];
+    int n_idx = tn_idx * TN + tn;
+    if (n_idx >= n_intervals) break;
+
+    int interval_start = __ldg(&interval_starts[n_idx]);
+    int interval_length = __ldg(&interval_lengths[n_idx]);
+
+    if (interval_start == -1) break;
+
+    for (int tc = 0; tc < TC; tc++) {
+      psum[tc] = 0;
+    }
+
+    int b_idx = __ldg(&ranks_bev[interval_start]);
+    for (int i = 0; i < interval_length; i++) {
+      float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
+#pragma unroll
+      for (int tc = 0; tc < TC; tc++) {
+        int c_idx = tc_idx * TC + tc;
+        if (c_idx >= C) continue;
+
+        float f = (float)__ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
+        psum[tc] = __fmaf_rn(d, f, psum[tc]);
+      }
+    }
+
+#pragma unroll
+    for (int tc = 0; tc < TC; tc++) {
+      int c_idx = tc_idx * TC + tc;
+      if (c_idx >= C) break;
+      int tid;
+      tid = b_idx * C + c_idx;
+      atomicAdd(&out[tid], psum[tc]);
+    }
+  }
+
+
+}
+
+
+extern "C"
+void bev_pool_v3_float_float_float(int c, int n_intervals,
+                                  const float *depth,
+                                  const float *feat,
+                                  const int *ranks_depth,
+                                  const int *ranks_feat,
+                                  const int *ranks_bev,
+                                  const int *interval_starts,
+                                  const int *interval_lengths,
+                                  float *out) {
+
+    printf("TC=%d, TN=%d, n_intervals=%d\n", TC, TN, n_intervals);
+    dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+    dim3 blockSize(BC, BN);
+
+    cudaMemset(out, 0, OH*OW*C*sizeof(float));
+    bev_pool_kernel_v3<float, float, float, TC, TN><<<gridSize, blockSize>>>(
+        c, n_intervals, depth, feat, ranks_depth, ranks_feat, ranks_bev,
         interval_starts, interval_lengths, out);
 }
