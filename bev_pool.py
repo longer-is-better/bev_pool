@@ -585,29 +585,29 @@ if __name__ == "__main__":
       print_diff = False
 
     print("=== Iteration: ", i)
-    #test_hpc_bev_pool_v2()
-    #test_hpc_bev_pool_pack32_half()
-    #test_flatmap()
+    test_hpc_bev_pool_v2()
+    test_hpc_bev_pool_pack32_half()
+    test_flatmap()
 
-    #test_float_float_float_nhwd()
-    #test_float_float_float_nchw()
-    #test_float_float_float()
+    test_float_float_float_nhwd()
+    test_float_float_float_nchw()
+    test_float_float_float()
 
-    #test_half_float_float()
-    #test_half_half_half()
-    #test_half_float_half()
+    test_half_float_float()
+    test_half_half_half()
+    test_half_float_half()
 
-    #test_bf16_float_bf16()
-    #test_bf16_bf16_bf16()
-    #test_bf16_float_float()
+    test_bf16_float_bf16()
+    test_bf16_bf16_bf16()
+    test_bf16_float_float()
 
-    ## v2
-    #test_v2_float_float_float()
-    #test_v2_float_half_half()
-    #test_v2_float_half_float()
-    #test_v2_half_half_float()
-    #test_v2_half_float_half()
-    #test_v2_half_float_float()
+    # v2
+    test_v2_float_float_float()
+    test_v2_float_half_half()
+    test_v2_float_half_float()
+    test_v2_half_half_float()
+    test_v2_half_float_half()
+    test_v2_half_float_float()
 
-    ## v3
+    # v3
     test_v3_float_float_float()

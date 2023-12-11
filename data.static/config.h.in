@@ -7,7 +7,9 @@ constexpr int OH = 80;
 constexpr int OW = 160;
 constexpr int P = 1606542;
 
-constexpr int TC = 2;
+constexpr int TC = 4;
 constexpr int TN = 1;
-constexpr int BC = 64;
+constexpr int BC = 32;
 constexpr int BN = 8;
+
+constexpr int MIL = 100; // max interval length

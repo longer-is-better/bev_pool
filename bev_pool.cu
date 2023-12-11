@@ -64,7 +64,6 @@ void read_file(const char *filename, size_t element_sz, size_t size, void *buffe
   fclose(fp);
 }
 
-constexpr int MIL = 100; // max interval length
 extern "C"
 void tensor_init(int *ranks_depth,
                  int *ranks_feat,
