@@ -578,47 +578,71 @@ __global__ void bev_pool_kernel_v3(
     const int *__restrict__ interval_lengths,
     OType *__restrict__ out) {
 
+  extern __shared__ OType shout[8][32][TC];
+  extern __shared__ int shvidx[8]; // voxel-id
+
   int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int tn_idx = blockIdx.y * blockDim.y + threadIdx.y;
+  int n_idx = blockIdx.y * blockDim.y + threadIdx.y;
+  int n_idx_mod = n_idx % 8;
+  float psum[TC];
 
-#pragma unroll
-  for (int tn = 0; tn < TN; tn++) {
-    float psum[TC];
-    int n_idx = tn_idx * TN + tn;
-    if (n_idx >= n_intervals) break;
+  shvidx[n_idx_mod] = -1;
+  for (int tc = 0; tc < TC; tc++) {
+    psum[tc] = 0;
+    shout[n_idx_mod][tc_idx][tc] = 0;
+  }
+  __syncthreads();
 
-    int interval_start = __ldg(&interval_starts[n_idx]);
-    int interval_length = __ldg(&interval_lengths[n_idx]);
 
-    if (interval_start == -1) break;
+  int interval_start = __ldg(&interval_starts[n_idx]);
+  int interval_length = __ldg(&interval_lengths[n_idx]);
+  if (interval_start == -1) return;
 
-    for (int tc = 0; tc < TC; tc++) {
-      psum[tc] = 0;
-    }
+  int v_idx = __ldg(&ranks_bev[interval_start]); // voxel index
 
-    int b_idx = __ldg(&ranks_bev[interval_start]);
-    for (int i = 0; i < interval_length; i++) {
-      float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
-#pragma unroll
-      for (int tc = 0; tc < TC; tc++) {
-        int c_idx = tc_idx * TC + tc;
-        if (c_idx >= C) continue;
+  bool use_shmem = false;
+  int v_idx_mod = v_idx % 8;
+  int cas = atomicCAS(&shvidx[v_idx_mod], -1, v_idx);
+  if (cas == -1 || cas == v_idx)
+    use_shmem = true;
+  __syncthreads();
+    
 
-        float f = (float)__ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
-        psum[tc] = __fmaf_rn(d, f, psum[tc]);
-      }
-    }
 
+  for (int i = 0; i < interval_length; i++) {
+    float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
 #pragma unroll
     for (int tc = 0; tc < TC; tc++) {
       int c_idx = tc_idx * TC + tc;
-      if (c_idx >= C) break;
-      int tid;
-      tid = b_idx * C + c_idx;
-      atomicAdd(&out[tid], psum[tc]);
+      if (c_idx >= C) continue;
+
+      float f = (float)__ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
+      psum[tc] = __fmaf_rn(d, f, psum[tc]);
     }
   }
 
+#pragma unroll
+  for (int tc = 0; tc < TC; tc++) {
+    int c_idx = tc_idx * TC + tc;
+    if (c_idx >= C) break;
+    int bev_off;
+    if (use_shmem) {
+      atomicAdd(&shout[v_idx_mod][tc_idx][tc], psum[tc]);
+    } else {
+      bev_off = v_idx * C + c_idx;
+      atomicAdd(&out[bev_off], psum[tc]);
+    }
+  }
+
+  __syncthreads();
+  for (int tc = 0; tc < TC; tc++) {
+    int c_idx = tc_idx * TC + tc;
+    if (c_idx >= C) break;
+    if (shvidx[n_idx_mod] != -1) {
+      int bev_off = shvidx[n_idx_mod] * C + c_idx;
+      atomicAdd(&out[bev_off], shout[n_idx_mod][tc_idx][tc]);
+    }
+  }
 
 }
 
