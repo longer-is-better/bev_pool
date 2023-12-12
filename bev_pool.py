@@ -35,6 +35,7 @@ interval_lengths_e = torch.zeros((50000), dtype=torch.int32)
 interval_vids_e = torch.zeros((50000), dtype=torch.int32)
 interval_starts_x = torch.zeros((3000000), dtype=torch.int32)
 interval_lengths_x = torch.zeros((3000000), dtype=torch.int32)
+interval_vids_x = torch.zeros((50000), dtype=torch.int32)
 
 
 
@@ -53,6 +54,7 @@ EXE.tensor_init(ctypes.c_void_p(ranks_depth.data_ptr()),
                 ctypes.c_void_p(interval_vids_e.data_ptr()),
                 ctypes.c_void_p(interval_starts_x.data_ptr()),
                 ctypes.c_void_p(interval_lengths_x.data_ptr()),
+                ctypes.c_void_p(interval_vids_x.data_ptr()),
                 ctypes.pointer(n_intervals_x))
 
 depth_nhwd = torch.permute(depth, (0, 2, 3, 1)).contiguous()
@@ -542,9 +544,10 @@ def test_v3_float_float_float():
     bev_local = bev.cuda()
     ranks_depth_local = ranks_depth.cuda()
     ranks_feat_local = ranks_feat.cuda()
-    ranks_bev_local = ranks_bev.cuda()
+    #ranks_bev_local = ranks_bev.cuda()
     interval_starts_local = interval_starts_x.cuda()
     interval_lengths_local = interval_lengths_x.cuda()
+    interval_vids_local = interval_vids_x.cuda()
 
     t0 = time.time()
     EXE.bev_pool_v3_float_float_float(ctypes.c_int(C),
@@ -553,9 +556,10 @@ def test_v3_float_float_float():
                                       ctypes.c_void_p(feat_local.data_ptr()),
                                       ctypes.c_void_p(ranks_depth_local.data_ptr()),
                                       ctypes.c_void_p(ranks_feat_local.data_ptr()),
-                                      ctypes.c_void_p(ranks_bev_local.data_ptr()),
+                                      #ctypes.c_void_p(ranks_bev_local.data_ptr()),
                                       ctypes.c_void_p(interval_starts_local.data_ptr()),
                                       ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                      ctypes.c_void_p(interval_vids_local.data_ptr()),
                                       ctypes.c_void_p(bev_local.data_ptr()))
     torch.cuda.synchronize()
     t1 = time.time()

@@ -76,6 +76,7 @@ void tensor_init(int *ranks_depth,
                  int *interval_vids_e,
                  int *interval_starts_x,
                  int *interval_lengths_x,
+                 int *interval_vids_x,
                  int *n_intervals_x) {
 
   read_file("data/ranks_depth.bin", sizeof(float), 4000000, ranks_depth);
@@ -122,12 +123,14 @@ void tensor_init(int *ranks_depth,
       if (len <= MIL) {
         interval_starts_x[k] = interval_starts[i];
         interval_lengths_x[k] = interval_lengths[i];
+        interval_vids_x[k] = ranks_bev[interval_starts[i]];
         k++;
       } else {
         int ext = (len + MIL - 1) / MIL;
         for  (int e = 0; e < ext; e++) {
           interval_lengths_x[k] = (e < (ext - 1)) ? MIL : (len - MIL * e);
           interval_starts_x[k] = interval_starts[i] + MIL * e;
+          interval_vids_x[k] = ranks_bev[interval_starts[i]];
           k++;
         }
       }
@@ -662,9 +665,10 @@ __global__ void bev_pool_kernel_v3(
     const FType *__restrict__ feat,
     const int *__restrict__ ranks_depth,
     const int *__restrict__ ranks_feat,
-    const int *__restrict__ ranks_bev,
+    //const int *__restrict__ ranks_bev,
     const int *__restrict__ interval_starts,
     const int *__restrict__ interval_lengths,
+    const int *__restrict__ interval_vids,
     OType *__restrict__ out) {
 
   int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -680,12 +684,13 @@ __global__ void bev_pool_kernel_v3(
     int interval_length = __ldg(&interval_lengths[n_idx]);
 
     if (interval_start == -1) break;
+    //int v_idx = __ldg(&ranks_bev[interval_start]);
+    int v_idx = __ldg(&interval_vids[n_idx]);
 
     for (int tc = 0; tc < TC; tc++) {
       psum[tc] = 0;
     }
 
-    int v_idx = __ldg(&ranks_bev[interval_start]);
     for (int i = 0; i < interval_length; i++) {
       float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
 #pragma unroll
@@ -715,9 +720,10 @@ void bev_pool_v3_float_float_float(int c, int n_intervals,
                                   const float *feat,
                                   const int *ranks_depth,
                                   const int *ranks_feat,
-                                  const int *ranks_bev,
+                                  //const int *ranks_bev,
                                   const int *interval_starts,
                                   const int *interval_lengths,
+                                  const int *interval_vids,
                                   float *out) {
 
     printf("TC=%d, TN=%d, n_intervals=%d\n", TC, TN, n_intervals);
@@ -726,8 +732,8 @@ void bev_pool_v3_float_float_float(int c, int n_intervals,
 
     cudaMemset(out, 0, OH*OW*C*sizeof(float));
     bev_pool_kernel_v3<float, float, float, TC, TN><<<gridSize, blockSize>>>(
-        c, n_intervals, depth, feat, ranks_depth, ranks_feat, ranks_bev,
-        interval_starts, interval_lengths, out);
+        c, n_intervals, depth, feat, ranks_depth, ranks_feat, //ranks_bev,
+        interval_starts, interval_lengths, interval_vids, out);
 }
 
 
