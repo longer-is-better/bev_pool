@@ -89,15 +89,14 @@ ranks_bev_sorted, ranks_depth_sorted, ranks_feat_sorted = sort_abc_by_a(trim_neg
                                                                         trim_neg1(ranks_depth),
                                                                         trim_neg1(ranks_feat))
 
-interval_lengths_sorted, interval_starts_sorted, interval_vids_sorted = sort_abc_by_a(interval_lengths_e,
-                                                                                      interval_starts_e,
-                                                                                      interval_vids_e, descending=True)
+interval_lengths_sorted, interval_starts_sorted, interval_vids_sorted = sort_abc_by_a(trim_neg1(interval_lengths_e),
+                                                                                      trim_neg1(interval_starts_e),
+                                                                                      trim_neg1(interval_vids_e), descending=True)
 
-
-print("interval_lengths_sorted:", interval_lengths_sorted[:100].tolist())
-print("interval_starts_sorted:", interval_starts_sorted[:100].tolist())
-print("interval_vids_sorted:", interval_vids_sorted[:100].tolist())
-print("interval_vids_sorted:", interval_vids_sorted.shape)
+#print("interval_lengths_sorted:", interval_lengths_sorted[:100].tolist())
+#print("interval_starts_sorted:", interval_starts_sorted[:100].tolist())
+#print("interval_vids_sorted:", interval_vids_sorted[:100].tolist())
+#print("interval_vids_sorted:", interval_vids_sorted.shape)
 
 def compare_tensors(tensor1, tensor2, rtol=1e-03, atol=1e-05):
     closeness = torch.isclose(tensor1, tensor2, atol=atol, rtol=rtol)
@@ -575,7 +574,7 @@ def test_v4_float_float_float():
 
     t0 = time.time()
     EXE.bev_pool_v4_float_float_float(ctypes.c_int(C),
-                                      n_intervals_x,
+                                      n_intervals,
                                       ctypes.c_void_p(depth_local.data_ptr()),
                                       ctypes.c_void_p(feat_local.data_ptr()),
                                       ctypes.c_void_p(ranks_depth_local.data_ptr()),

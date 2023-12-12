@@ -701,8 +701,6 @@ __global__ void bev_pool_kernel_v4(
     int interval_start = __ldg(&interval_starts[n_idx]);
     int interval_length = __ldg(&interval_lengths[n_idx]);
     int vid = __ldg(&interval_vids[n_idx]);
-    //int vid = n_idx;
-//if (vid < 0) { printf("interval_start=%d, vid=%d\n", interval_start, vid); return; }
 
     if (interval_start == -1) break;
 
