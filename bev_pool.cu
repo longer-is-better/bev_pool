@@ -575,7 +575,7 @@ void bev_pool_v2_half_float_half(int c, int n_intervals,
 }
 
 template<typename DType, typename FType, typename OType, int TC, int TN>
-__global__ void bev_pool_kernel_v3(
+__global__ void bev_pool_kernel_v3shm(
     int C, int n_intervals,
     const DType *__restrict__ depth,
     const FType *__restrict__ feat,
@@ -652,6 +652,60 @@ __global__ void bev_pool_kernel_v3(
     }
   }
 
+}
+
+
+template<typename DType, typename FType, typename OType, int TC, int TN>
+__global__ void bev_pool_kernel_v3(
+    int C, int n_intervals,
+    const DType *__restrict__ depth,
+    const FType *__restrict__ feat,
+    const int *__restrict__ ranks_depth,
+    const int *__restrict__ ranks_feat,
+    const int *__restrict__ ranks_bev,
+    const int *__restrict__ interval_starts,
+    const int *__restrict__ interval_lengths,
+    OType *__restrict__ out) {
+
+  int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int tn_idx = blockIdx.y * blockDim.y + threadIdx.y;
+
+#pragma unroll
+  for (int tn = 0; tn < TN; tn++) {
+    float psum[TC];
+    int n_idx = tn_idx * TN + tn;
+    if (n_idx >= n_intervals) break;
+
+    int interval_start = __ldg(&interval_starts[n_idx]);
+    int interval_length = __ldg(&interval_lengths[n_idx]);
+
+    if (interval_start == -1) break;
+
+    for (int tc = 0; tc < TC; tc++) {
+      psum[tc] = 0;
+    }
+
+    int v_idx = __ldg(&ranks_bev[interval_start]);
+    for (int i = 0; i < interval_length; i++) {
+      float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
+#pragma unroll
+      for (int tc = 0; tc < TC; tc++) {
+        int c_idx = tc_idx * TC + tc;
+        if (c_idx >= C) continue;
+
+        float f = (float)__ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
+        psum[tc] = __fmaf_rn(d, f, psum[tc]);
+      }
+    }
+
+#pragma unroll
+    for (int tc = 0; tc < TC; tc++) {
+      int c_idx = tc_idx * TC + tc;
+      if (c_idx >= C) break;
+      int bev_off = v_idx * C + c_idx;
+      atomicAdd(&out[bev_off], psum[tc]);
+    }
+  }
 }
 
 
