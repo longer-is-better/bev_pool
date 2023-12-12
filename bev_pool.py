@@ -35,7 +35,7 @@ interval_lengths_e = torch.zeros((50000), dtype=torch.int32)
 interval_vids_e = torch.zeros((50000), dtype=torch.int32)
 interval_starts_x = torch.zeros((3000000), dtype=torch.int32)
 interval_lengths_x = torch.zeros((3000000), dtype=torch.int32)
-interval_vids_x = torch.zeros((50000), dtype=torch.int32)
+interval_vids_x = torch.zeros((3000000), dtype=torch.int32)
 
 
 
