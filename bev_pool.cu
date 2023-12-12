@@ -73,6 +73,7 @@ void tensor_init(int *ranks_depth,
                  int8_t *ranks_bev_mask,
                  int *interval_starts_e,
                  int *interval_lengths_e,
+                 int *interval_vids_e,
                  int *interval_starts_x,
                  int *interval_lengths_x,
                  int *n_intervals_x) {
@@ -97,13 +98,20 @@ void tensor_init(int *ranks_depth,
   }
   int j = 0;
   for (int i = 0; i < 50000; i++) {
-    if (ranks_bev_mask[i] == 0) {
-      interval_starts_e[i] = 0;
-      interval_lengths_e[i] = 0;
+    if (i >= (OH * OW)) {
+        interval_vids_e[i] = -1;
+        interval_starts_e[i] = -1;
+        interval_lengths_e[i] = -1;
     } else {
-      interval_starts_e[i] = interval_starts[j];
-      interval_lengths_e[i] = interval_lengths[j];
-      j++;
+        interval_vids_e[i] = i;
+        if (ranks_bev_mask[i] == 0) {
+            interval_starts_e[i] = 0;
+            interval_lengths_e[i] = 0;
+        } else {
+            interval_starts_e[i] = interval_starts[j];
+            interval_lengths_e[i] = interval_lengths[j];
+            j++;
+        }
     }
   }
 
@@ -666,4 +674,78 @@ void bev_pool_v3_float_float_float(int c, int n_intervals,
     bev_pool_kernel_v3<float, float, float, TC, TN><<<gridSize, blockSize>>>(
         c, n_intervals, depth, feat, ranks_depth, ranks_feat, ranks_bev,
         interval_starts, interval_lengths, out);
+}
+
+
+template<typename DType, typename FType, typename OType, const int TC, const int TN>
+__global__ void bev_pool_kernel_v4(
+    int C, int n_intervals,
+    const DType *__restrict__ depth,
+    const FType *__restrict__ feat,
+    const int *__restrict__ ranks_depth,
+    const int *__restrict__ ranks_feat,
+    const int *__restrict__ interval_starts,
+    const int *__restrict__ interval_lengths,
+    const int *__restrict__ interval_vids,
+    OType *__restrict__ out) {
+
+  int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int tn_idx = blockIdx.y * blockDim.y + threadIdx.y;
+
+#pragma unroll
+  for (int tn = 0; tn < TN; tn++) {
+    float psum[TC];
+    int n_idx = tn_idx * TN + tn;
+    if (n_idx >= n_intervals) break;
+
+    int interval_start = __ldg(&interval_starts[n_idx]);
+    int interval_length = __ldg(&interval_lengths[n_idx]);
+    int vid = __ldg(&interval_vids[n_idx]);
+    //int vid = n_idx;
+//if (vid < 0) { printf("interval_start=%d, vid=%d\n", interval_start, vid); return; }
+
+    if (interval_start == -1) break;
+
+    for (int tc = 0; tc < TC; tc++) {
+      psum[tc] = 0;
+    }
+
+    for (int i = 0; i < interval_length; i++) {
+      float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
+#pragma unroll
+      for (int tc = 0; tc < TC; tc++) {
+        int c_idx = tc_idx * TC + tc;
+        if (c_idx >= C) continue;
+
+        float f = (float)__ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
+        psum[tc] = __fmaf_rn(d, f, psum[tc]);
+      }
+    }
+
+#pragma unroll
+    for (int tc = 0; tc < TC; tc++) {
+      int c_idx = tc_idx * TC + tc;
+      if (c_idx >= C) break;
+      int bev_off = vid * C + c_idx;
+      out[bev_off] = psum[tc];
+    }
+  }
+}
+
+
+extern "C"
+void bev_pool_v4_float_float_float(int c, int n_intervals,
+                                   const float *depth,
+                                   const float *feat,
+                                   const int *ranks_depth,
+                                   const int *ranks_feat,
+                                   const int *interval_starts,
+                                   const int *interval_lengths,
+                                   const int *interval_vids,
+                                   float *out) {
+    dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+    dim3 blockSize(BC, BN);
+    bev_pool_kernel_v4<float, float, float, TC, TN><<<gridSize, blockSize>>>(
+        c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+        interval_starts, interval_lengths, interval_vids, out);
 }

@@ -32,6 +32,7 @@ interval_starts = torch.zeros((50000), dtype=torch.int32)
 interval_lengths = torch.zeros((50000), dtype=torch.int32)
 interval_starts_e = torch.zeros((50000), dtype=torch.int32)
 interval_lengths_e = torch.zeros((50000), dtype=torch.int32)
+interval_vids_e = torch.zeros((50000), dtype=torch.int32)
 interval_starts_x = torch.zeros((3000000), dtype=torch.int32)
 interval_lengths_x = torch.zeros((3000000), dtype=torch.int32)
 
@@ -49,6 +50,7 @@ EXE.tensor_init(ctypes.c_void_p(ranks_depth.data_ptr()),
                 ctypes.c_void_p(ranks_bev_mask.data_ptr()),
                 ctypes.c_void_p(interval_starts_e.data_ptr()),
                 ctypes.c_void_p(interval_lengths_e.data_ptr()),
+                ctypes.c_void_p(interval_vids_e.data_ptr()),
                 ctypes.c_void_p(interval_starts_x.data_ptr()),
                 ctypes.c_void_p(interval_lengths_x.data_ptr()),
                 ctypes.pointer(n_intervals_x))
@@ -71,10 +73,10 @@ def trim_neg1(t):
     trim = t[:last_non_neg_index + 1]
     return trim
 
-def sort_abc_by_a(a, b, c):
+def sort_abc_by_a(a, b, c, descending=False):
     abc = torch.stack([a, b, c])
     # Sort the tensor along the first dimension (axis 0) based on the values in the first 256 numbers
-    sorted_indices = torch.argsort(abc[0])
+    sorted_indices = torch.argsort(abc[0], descending=descending)
     sorted_abc = abc[:, sorted_indices]
 
     # Split the sorted tensor into a1, b1, and c1 with 256 elements each
@@ -86,6 +88,16 @@ def sort_abc_by_a(a, b, c):
 ranks_bev_sorted, ranks_depth_sorted, ranks_feat_sorted = sort_abc_by_a(trim_neg1(ranks_bev),
                                                                         trim_neg1(ranks_depth),
                                                                         trim_neg1(ranks_feat))
+
+interval_lengths_sorted, interval_starts_sorted, interval_vids_sorted = sort_abc_by_a(interval_lengths_e,
+                                                                                      interval_starts_e,
+                                                                                      interval_vids_e, descending=True)
+
+
+print("interval_lengths_sorted:", interval_lengths_sorted[:100].tolist())
+print("interval_starts_sorted:", interval_starts_sorted[:100].tolist())
+print("interval_vids_sorted:", interval_vids_sorted[:100].tolist())
+print("interval_vids_sorted:", interval_vids_sorted.shape)
 
 def compare_tensors(tensor1, tensor2, rtol=1e-03, atol=1e-05):
     closeness = torch.isclose(tensor1, tensor2, atol=atol, rtol=rtol)
@@ -551,6 +563,32 @@ def test_v3_float_float_float():
     print(f"v3: float_float_float: {(t1-t0)*1000:.3f} ms")
     compare_tensors(bev_local, bev_baseline_float)
 
+def test_v4_float_float_float():
+    depth_local = depth.cuda()
+    feat_local = feat.cuda()
+    bev_local = bev.cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    interval_starts_local = interval_starts_sorted.cuda()
+    interval_lengths_local = interval_lengths_sorted.cuda()
+    interval_vids_local = interval_vids_sorted.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v4_float_float_float(ctypes.c_int(C),
+                                      n_intervals_x,
+                                      ctypes.c_void_p(depth_local.data_ptr()),
+                                      ctypes.c_void_p(feat_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                      ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                      ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                      ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                      ctypes.c_void_p(interval_vids_local.data_ptr()),
+                                      ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v4: float_float_float: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local, bev_baseline_float)
+
 
 
 n_interval = 50000
@@ -661,3 +699,6 @@ if __name__ == "__main__":
 
     # v3
     test_v3_float_float_float()
+
+    # v4
+    test_v4_float_float_float()
