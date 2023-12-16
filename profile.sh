@@ -1,4 +1,4 @@
-rm data
+# git clean -df
 ln -s data.2 data
 nvcc \
     -O3 \

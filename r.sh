@@ -45,5 +45,4 @@ if [ ! -L data ]; then
 fi
 nvcc -O3 -arch=$CC --use_fast_math -std=c++17 bev_pool.cu -o bev_pool.so -shared -Xcompiler -fPIC
 
-# CUDA_LAUNCH_BLOCKING=1 python3 ./bev_pool.py
-./bev_pool
+CUDA_LAUNCH_BLOCKING=1 python3 ./bev_pool.py
