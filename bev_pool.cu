@@ -4,8 +4,39 @@
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
 
+#include <functional>
+#include <random>
+#include <iostream>
+
 // read from data
 #include "data/config.h.in"
+
+// std::uniform_int_distribution
+template<class DATA_TYPE, template<class> class DISTRIBUTE>
+std::function<DATA_TYPE(const std::vector<int>&)> get_rand_data_gen(
+    DATA_TYPE lowwer_bound,
+    DATA_TYPE upper_bound
+) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    DISTRIBUTE<DATA_TYPE> dist(lowwer_bound, upper_bound);
+    return [dist, gen] (const std::vector<int>& in) mutable {return dist(gen);};
+}
+
+
+
+// result value check of cuda runtime
+#define CHECK(call) check(call, __LINE__, __FILE__)
+
+inline bool check(cudaError_t e, int iLine, const char *szFile)
+{
+    if (e != cudaSuccess)
+    {
+        std::cout << "CUDA runtime API error " << cudaGetErrorName(e) << " at line " << iLine << " in file " << szFile << std::endl;
+        return false;
+    }
+    return true;
+}
 
 #if 0
 constexpr int N = 7;
@@ -806,4 +837,87 @@ void bev_pool_v4_float_float_float(int c, int n_intervals,
     bev_pool_kernel_v4<float, float, float, TC, TN><<<gridSize, blockSize>>>(
         c, n_intervals, depth, feat, ranks_depth, ranks_feat,
         interval_starts, interval_lengths, interval_vids, out);
+}
+
+
+
+int main() {
+  auto gen_rand = get_rand_data_gen<float, std::uniform_real_distribution>(-10.f, 10.5f);
+
+  size_t depth_element_count =  get_config("N") *
+                                get_config("D") *
+                                get_config("IH") *
+                                get_config("IW");
+  float *depth; CHECK(
+    cudaMallocManaged(
+      &depth,
+      depth_element_count * sizeof(float)
+    )
+  );
+  for (int i = 0; i < depth_element_count; i++) depth[i] = gen_rand({});
+
+
+  size_t feat_element_count = get_config("N") *
+                              get_config("IH") *
+                              get_config("IW") *
+                              get_config("C");
+  float *feat; CHECK(
+    cudaMallocManaged(
+      &feat,
+      feat_element_count * sizeof(float)
+    )
+  );
+  for (int i = 0; i < feat_element_count; i++) feat[i] = gen_rand({});
+
+
+  size_t out_element_count =  get_config("OH") *
+                              get_config("OW") *
+                              get_config("C");
+  float *out; CHECK(
+    cudaMallocManaged(
+      &out,
+      out_element_count * sizeof(float)
+    )
+  );
+
+
+  int *ranks_depth; CHECK(cudaMallocManaged(&ranks_depth, 4000000 * sizeof(int)));
+  int *ranks_feat; CHECK(cudaMallocManaged(&ranks_feat, 4000000 * sizeof(int)));
+  int *ranks_bev; CHECK(cudaMallocManaged(&ranks_bev, 4000000 * sizeof(int)));
+  int *interval_starts; CHECK(cudaMallocManaged(&interval_starts, 50000 * sizeof(int)));
+  int *interval_lengths; CHECK(cudaMallocManaged(&interval_lengths, 50000 * sizeof(int)));
+  int8_t *ranks_bev_mask; CHECK(cudaMallocManaged(&ranks_bev_mask, OH * OW * sizeof(int8_t)));
+  int *interval_starts_e; CHECK(cudaMallocManaged(&interval_starts_e, 50000 * sizeof(int)));
+  int *interval_lengths_e; CHECK(cudaMallocManaged(&interval_lengths_e, 50000 * sizeof(int)));
+  int *interval_vids_e; CHECK(cudaMallocManaged(&interval_vids_e, 50000 * sizeof(int)));
+  int *interval_starts_x; CHECK(cudaMallocManaged(&interval_starts_x, 50000 * sizeof(int)));
+  int *interval_lengths_x; CHECK(cudaMallocManaged(&interval_lengths_x, 3000000 * sizeof(int)));
+  int *interval_vids_x; CHECK(cudaMallocManaged(&interval_vids_x, 3000000 * sizeof(int)));
+  int *n_intervals_x; CHECK(cudaMallocManaged(&n_intervals_x, 3000000 * sizeof(int)));
+
+  tensor_init(ranks_depth,
+              ranks_feat,
+              ranks_bev,
+              interval_starts,
+              interval_lengths,
+              ranks_bev_mask,
+              interval_starts_e,
+              interval_lengths_e,
+              interval_vids_e,
+              interval_starts_x,
+              interval_lengths_x,
+              interval_vids_x,
+              n_intervals_x);
+
+  bev_pool_float_float_float_nchw(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth,
+    feat,
+    ranks_depth,
+    ranks_feat,
+    interval_starts,
+    interval_lengths,
+    out
+  );
 }

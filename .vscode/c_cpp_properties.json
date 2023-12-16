@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/usr/local/cuda/include",
+                "/usr/include/x86_64-linux-gnu",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [],
+            // "compilerPath": "/usr/bin/gcc",
+            "compilerPath": "/usr/local/cuda/bin/nvcc",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
