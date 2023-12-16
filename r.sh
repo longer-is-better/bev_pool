@@ -39,7 +39,9 @@ function build_hpc() {
 
 build_hpc
 if [ ! -L data ]; then
-  ln -s data.2 data
+  # ln -s data.1 data
+  # ln -s data.2 data
+  ln -s data.static data
 fi
 nvcc -O3 -arch=$CC --use_fast_math -std=c++17 bev_pool.cu -o bev_pool.so -shared -Xcompiler -fPIC
 nvcc -O3 -arch=$CC --use_fast_math -std=c++17 --generate-line-info bev_pool.cu -o bev_pool

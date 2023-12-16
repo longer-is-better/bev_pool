@@ -848,35 +848,55 @@ int main() {
                                 get_config("D") *
                                 get_config("IH") *
                                 get_config("IW");
-  float *depth; CHECK(
+  float *depth_float; CHECK(
     cudaMallocManaged(
-      &depth,
+      &depth_float,
       depth_element_count * sizeof(float)
     )
   );
-  for (int i = 0; i < depth_element_count; i++) depth[i] = gen_rand({});
+  for (int i = 0; i < depth_element_count; i++) depth_float[i] = gen_rand({});
+  half *depth_half; CHECK(
+    cudaMallocManaged(
+      &depth_half,
+      depth_element_count * sizeof(half)
+    )
+  );
+  for (int i = 0; i < depth_element_count; i++) depth_half[i] = gen_rand({});
 
 
   size_t feat_element_count = get_config("N") *
                               get_config("IH") *
                               get_config("IW") *
                               get_config("C");
-  float *feat; CHECK(
+  float *feat_float; CHECK(
     cudaMallocManaged(
-      &feat,
+      &feat_float,
       feat_element_count * sizeof(float)
     )
   );
-  for (int i = 0; i < feat_element_count; i++) feat[i] = gen_rand({});
+  for (int i = 0; i < feat_element_count; i++) feat_float[i] = gen_rand({});
+  half *feat_half; CHECK(
+    cudaMallocManaged(
+      &feat_half,
+      feat_element_count * sizeof(half)
+    )
+  );
+  for (int i = 0; i < feat_element_count; i++) feat_half[i] = gen_rand({});
 
 
   size_t out_element_count =  get_config("OH") *
                               get_config("OW") *
                               get_config("C");
-  float *out; CHECK(
+  float *out_float; CHECK(
     cudaMallocManaged(
-      &out,
+      &out_float,
       out_element_count * sizeof(float)
+    )
+  );
+  half *out_half; CHECK(
+    cudaMallocManaged(
+      &out_half,
+      out_element_count * sizeof(half)
     )
   );
 
@@ -909,15 +929,156 @@ int main() {
               interval_vids_x,
               n_intervals_x);
 
+  bev_pool_float_float_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_float,
+    feat_float,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
+
   bev_pool_float_float_float_nchw(
     get_config("C"),
     get_config("OH") * get_config("OW"),
-    depth,
-    feat,
+    depth_float,
+    feat_float,
     ranks_depth,
     ranks_feat,
-    interval_starts,
-    interval_lengths,
-    out
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
   );
+
+  bev_pool_half_float_half(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_half,
+    feat_half,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_half
+  );
+
+  bev_pool_half_float_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_half,
+    feat_half,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
+  bev_pool_half_half_half(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_half,
+    feat_half,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_half
+  );
+
+  bev_pool_v2_float_float_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_float,
+    feat_float,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
+  bev_pool_v2_float_half_half(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_float,
+    feat_half,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_half
+  );
+
+  bev_pool_v2_float_half_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_float,
+    feat_half,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
+  bev_pool_v2_half_half_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_half,
+    feat_half,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
+
+
+  bev_pool_v2_half_float_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_half,
+    feat_float,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
+
+
+  bev_pool_v2_half_float_half(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_half,
+    feat_float,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_half
+  );
+
+
+  bev_pool_v3_float_float_float(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_float,
+    feat_float,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_x,
+    interval_lengths_x,
+    interval_vids_x,
+    out_float
+  );
+
+  CHECK(cudaDeviceSynchronize());
 }
