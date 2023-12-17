@@ -608,6 +608,81 @@ void bev_pool_v2_half_float_half(int c, int n_intervals,
         interval_starts, interval_lengths, out);
 }
 
+
+template<typename DType, typename FType, typename OType, const int TC, const int TN>
+__global__ void bev_pool_kernel_v2_outchannelfirst(
+    int C, int n_intervals,
+    const DType *__restrict__ depth,
+    const FType *__restrict__ feat,
+    const int *__restrict__ ranks_depth,
+    const int *__restrict__ ranks_feat,
+    const int *__restrict__ interval_starts,
+    const int *__restrict__ interval_lengths,
+    OType *__restrict__ out) {
+
+  // int tc_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  // int tn_idx = blockIdx.y * blockDim.y + threadIdx.y;
+  int tn_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int tc_idx = blockIdx.y * blockDim.y + threadIdx.y;
+
+#pragma unroll
+  for (int tn = 0; tn < TN; tn++) {
+    float psum[TC];
+    int n_idx = tn_idx * TN + tn;
+    if (n_idx >= n_intervals) break;
+
+    int interval_start = __ldg(&interval_starts[n_idx]);
+    int interval_length = __ldg(&interval_lengths[n_idx]);
+
+    if (interval_start == -1) break;
+
+    for (int tc = 0; tc < TC; tc++) {
+      psum[tc] = 0;
+    }
+
+    for (int i = 0; i < interval_length; i++) {
+      float d = (float)__ldg(&depth[ranks_depth[interval_start + i]]);
+#pragma unroll
+      for (int tc = 0; tc < TC; tc++) {
+        int c_idx = tc_idx * TC + tc;
+        if (c_idx >= C) continue;
+
+        float f = (float)__ldg(&feat[ranks_feat[interval_start + i] * C + c_idx]);
+        psum[tc] = __fmaf_rn(d, f, psum[tc]);
+      }
+    }
+
+#pragma unroll
+    for (int tc = 0; tc < TC; tc++) {
+      int c_idx = tc_idx * TC + tc;
+      if (c_idx >= C) break;
+      int tid;
+      // tid = n_idx * C + c_idx;
+      tid = c_idx * OH * OW + n_idx;
+      out[tid] = psum[tc];
+    }
+  }
+}
+
+extern "C"
+void bev_pool_v2_float_float_float_outchannelfirst(int c, int n_intervals,
+                                   const float *depth,
+                                   const float *feat,
+                                   const int *ranks_depth,
+                                   const int *ranks_feat,
+                                   const int *interval_starts,
+                                   const int *interval_lengths,
+                                   float *out) {
+    // dim3 gridSize((c + TC * BC - 1)/(TC * BC), (n_intervals + TN * BN - 1)/(TN * BN));
+    // dim3 blockSize(BC, BN);
+    dim3 gridSize((n_intervals + TN * BN - 1)/(TN * BN), (c + TC * BC - 1)/(TC * BC));
+    dim3 blockSize(BN, BC);
+    bev_pool_kernel_v2_outchannelfirst<float, float, float, TC, TN><<<gridSize, blockSize>>>(
+        c, n_intervals, depth, feat, ranks_depth, ranks_feat,
+        interval_starts, interval_lengths, out);
+}
+
+
 template<typename DType, typename FType, typename OType, int TC, int TN>
 __global__ void bev_pool_kernel_v3shm(
     int C, int n_intervals,
@@ -1002,6 +1077,19 @@ int main() {
     out_float
   );
 
+  
+  bev_pool_v2_float_float_float_outchannelfirst(
+    get_config("C"),
+    get_config("OH") * get_config("OW"),
+    depth_float,
+    feat_float,
+    ranks_depth,
+    ranks_feat,
+    interval_starts_e,
+    interval_lengths_e,
+    out_float
+  );
+
   bev_pool_v2_float_half_half(
     get_config("C"),
     get_config("OH") * get_config("OW"),
@@ -1079,6 +1167,7 @@ int main() {
     interval_vids_x,
     out_float
   );
+
 
   CHECK(cudaDeviceSynchronize());
 }

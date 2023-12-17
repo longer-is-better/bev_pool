@@ -10,9 +10,9 @@ constexpr int OW = 272;
 constexpr int P = 2459286;
 
 
-constexpr int TC = 3;
-constexpr int TN = 1;
-constexpr int BC = 32;
-constexpr int BN = 8;
+constexpr int TC = 3;  // 3
+constexpr int TN = 1;  // 1
+constexpr int BC = 32;  // 32
+constexpr int BN = 8;  // 8
 
 constexpr int MIL = 333; // max interval length

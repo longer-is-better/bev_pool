@@ -418,6 +418,30 @@ def test_v2_float_float_float():
     print(f"v2: float_float_float: {(t1-t0)*1000:.3f} ms")
     compare_tensors(bev_local.float(), bev_baseline_float)
 
+def test_v2_cf_float_float_float():
+    depth_local = depth.cuda()
+    feat_local = feat.cuda()
+    bev_local = bev.cuda()
+    ranks_depth_local = ranks_depth.cuda()
+    ranks_feat_local = ranks_feat.cuda()
+    interval_starts_local = interval_starts_e.cuda()
+    interval_lengths_local = interval_lengths_e.cuda()
+
+    t0 = time.time()
+    EXE.bev_pool_v2_float_float_float_outchannelfirst(ctypes.c_int(C),
+                                                      ctypes.c_int(n_intervals),
+                                                      ctypes.c_void_p(depth_local.data_ptr()),
+                                                      ctypes.c_void_p(feat_local.data_ptr()),
+                                                      ctypes.c_void_p(ranks_depth_local.data_ptr()),
+                                                      ctypes.c_void_p(ranks_feat_local.data_ptr()),
+                                                      ctypes.c_void_p(interval_starts_local.data_ptr()),
+                                                      ctypes.c_void_p(interval_lengths_local.data_ptr()),
+                                                      ctypes.c_void_p(bev_local.data_ptr()))
+    torch.cuda.synchronize()
+    t1 = time.time()
+    print(f"v2: float_float_float_cf: {(t1-t0)*1000:.3f} ms")
+    compare_tensors(bev_local.float().reshape(1, C, OH, OW), torch.permute(bev_baseline_float, (0, 3, 1, 2)))
+
 def test_v2_float_half_half():
     depth_local = depth.cuda()
     feat_local = feat.half().cuda()
@@ -694,6 +718,7 @@ if __name__ == "__main__":
 
     # v2
     test_v2_float_float_float()
+    test_v2_cf_float_float_float()
     test_v2_float_half_half()
     test_v2_float_half_float()
     test_v2_half_half_float()
